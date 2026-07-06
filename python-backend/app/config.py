@@ -3,39 +3,64 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # App
+    # ── App ──────────────────────────────────────────────────────────────────
     APP_ENV: str = "development"
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
     DEBUG: bool = False
-    # Comma-separated list of allowed CORS origins, e.g. "https://app.example.com,https://admin.example.com"
-    # Use "*" only in local development; never in production with credentials.
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
-    # OpenRouter
+    # ── OpenRouter (free tier) ───────────────────────────────────────────────
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_DEFAULT_MODEL: str = "openai/gpt-4o"
+    # Free model – override via env to swap without code changes
+    OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
 
-    # Supabase
+    # ── Supabase ─────────────────────────────────────────────────────────────
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
 
-    # Telegram
+    # ── Telegram ─────────────────────────────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_WEBHOOK_URL: str = ""
+    # Optional shared secret set when registering the webhook with Telegram
+    # (X-Telegram-Bot-Api-Secret-Token header). Leave blank to skip validation.
+    TELEGRAM_WEBHOOK_SECRET: str = ""
 
+    # ── Derived helpers ───────────────────────────────────────────────────────
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
-    def validate_integration(self, name: str, *required_keys: str) -> None:
-        """Raise at startup if any required key for an integration is missing."""
-        missing = [k for k in required_keys if not getattr(self, k, "")]
+    def validate_required(self) -> None:
+        """Raise at startup if a required credential is absent."""
+        required = {
+            "OPENROUTER_API_KEY": self.OPENROUTER_API_KEY,
+            "SUPABASE_URL": self.SUPABASE_URL,
+            "SUPABASE_ANON_KEY": self.SUPABASE_ANON_KEY,
+            "TELEGRAM_BOT_TOKEN": self.TELEGRAM_BOT_TOKEN,
+        }
+        missing = [k for k, v in required.items() if not v]
         if missing:
             raise RuntimeError(
-                f"[{name}] Missing required environment variable(s): {', '.join(missing)}"
+                f"Missing required environment variable(s): {', '.join(missing)}"
+            )
+
+        # In production, an unauthenticated webhook is a security risk.
+        # Enforce TELEGRAM_WEBHOOK_SECRET when APP_ENV is not development.
+        if self.APP_ENV != "development" and not self.TELEGRAM_WEBHOOK_SECRET:
+            raise RuntimeError(
+                "TELEGRAM_WEBHOOK_SECRET must be set in non-development environments. "
+                "Register it with Telegram when calling setWebhook."
+            )
+
+        # Warn (don't hard-fail) in development so local testing stays easy.
+        if self.APP_ENV == "development" and not self.TELEGRAM_WEBHOOK_SECRET:
+            import warnings
+            warnings.warn(
+                "TELEGRAM_WEBHOOK_SECRET is not set. "
+                "Webhook endpoint is unauthenticated — acceptable in dev, required in production.",
+                stacklevel=2,
             )
 
     class Config:

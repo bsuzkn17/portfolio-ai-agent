@@ -1,15 +1,20 @@
-# Web framework
+# ── Web framework ─────────────────────────────────────────────────────────────
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 
-# Settings / env
+# ── Configuration ─────────────────────────────────────────────────────────────
 pydantic-settings==2.6.1
+python-dotenv==1.0.1
 
-# HTTP client (async)
+# ── HTTP client (async) ───────────────────────────────────────────────────────
 httpx==0.27.2
 
-# Supabase
+# ── Supabase ──────────────────────────────────────────────────────────────────
 supabase==2.10.0
 
-# Python-dotenv (loaded automatically by pydantic-settings; kept explicit for clarity)
-python-dotenv==1.0.1
+# ── Market data (free, no API key) ────────────────────────────────────────────
+yfinance==0.2.48
+
+# ── Numerical helpers (yfinance transitive dep, pinned for reproducibility) ───
+pandas>=2.0.0
+numpy>=1.26.0

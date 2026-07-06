@@ -1,6 +1,7 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 
 from app.config import get_settings
 from app.routes import router
@@ -8,21 +9,16 @@ from app.routes import router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan — startup validation and shutdown logic."""
     settings = get_settings()
-    print(f"[startup] env={settings.APP_ENV} debug={settings.DEBUG}")
-
-    # Fail fast: verify required integration credentials are present.
-    # Comment out any block if the integration is not yet configured.
-    if settings.OPENROUTER_API_KEY:
-        settings.validate_integration("OpenRouter", "OPENROUTER_API_KEY")
-    if settings.SUPABASE_URL or settings.SUPABASE_ANON_KEY:
-        settings.validate_integration("Supabase", "SUPABASE_URL", "SUPABASE_ANON_KEY")
-    if settings.TELEGRAM_BOT_TOKEN:
-        settings.validate_integration("Telegram", "TELEGRAM_BOT_TOKEN")
-
+    # Fail fast: all required credentials must be present before serving traffic
+    settings.validate_required()
+    print(
+        f"[startup] env={settings.APP_ENV}  "
+        f"model={settings.OPENROUTER_MODEL}  "
+        f"debug={settings.DEBUG}"
+    )
     yield
-    print("[shutdown] cleaning up")
+    print("[shutdown] graceful exit")
 
 
 def create_app() -> FastAPI:
@@ -30,8 +26,12 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="AI Investment Assistant",
-        description="FastAPI backend for the AI Investment Assistant service.",
-        version="1.0.0",
+        description=(
+            "Secure modular backend for AI-driven investment analysis. "
+            "Integrates yfinance (market data), OpenRouter free-tier LLM, "
+            "Supabase (persistence), and Telegram Bot API."
+        ),
+        version="2.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -41,12 +41,11 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
 
     app.include_router(router)
-
     return app
 
 
@@ -55,10 +54,5 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    settings = get_settings()
-    uvicorn.run(
-        "main:app",
-        host=settings.APP_HOST,
-        port=settings.APP_PORT,
-        reload=settings.DEBUG,
-    )
+    s = get_settings()
+    uvicorn.run("main:app", host=s.APP_HOST, port=s.APP_PORT, reload=s.DEBUG)
