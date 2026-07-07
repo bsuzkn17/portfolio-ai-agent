@@ -2,7 +2,11 @@ modules = ["nodejs-24", "python-base-3.13"]
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
+run = ["bash", "-c", "APP_ENV=production bash python-backend/start.sh"]
+
+[deployment.build]
+args = ["bash", "-c", "cd python-backend && python3 -m venv .venv && .venv/bin/pip install --quiet -r requirements.txt"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]

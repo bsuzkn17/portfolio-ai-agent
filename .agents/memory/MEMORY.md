@@ -1,0 +1,2 @@
+- [Managed workflow CWD](managed-workflow-cwd.md) — artifact managed workflows run from an unknown CWD; use `pnpm -w run <script>` (not relative paths or bare pnpm) to invoke root workspace scripts reliably.
+- [VM deployment for Telegram bot](vm-deployment.md) — this project needs `deploymentTarget = "vm"` in `.replit` with `run = ["bash", "-c", "APP_ENV=production bash python-backend/start.sh"]`; autoscale is wrong for a persistent bot.

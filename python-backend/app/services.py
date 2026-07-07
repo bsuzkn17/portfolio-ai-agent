@@ -319,27 +319,40 @@ def build_prompt_context(
 
 import re as _re
 
-# Matches: $1,234.56  |  USD 1234  |  1,234.56 USD  |  bare numbers ≥ 4 digits
-# We keep percentages and small integers (ratios, scores) intact.
+# Pass 1 — currency-prefixed/suffixed amounts and bare numbers ≥ 4 digits.
 _ABSOLUTE_VALUE_RE = _re.compile(
     r"""
     (?:
-        [\$€£¥₹][\s]?\d[\d,\.]*   # currency-symbol prefix  e.g. $1,234.56
-      | \d[\d,\.]*[\s]?(?:USD|EUR|GBP|JPY|CAD|AUD|CHF)  # suffix  e.g. 1234 USD
-      | \b\d{4,}(?:[,\.]\d+)?\b   # bare 4-or-more-digit numbers  e.g. 12345
+        [\$€£¥₹][\s]?\d[\d,\.]*                        # $95, €1,234.56
+      | \d[\d,\.]*[\s]?(?:USD|EUR|GBP|JPY|CAD|AUD|CHF) # 1234 USD
+      | \b\d{4,}(?:[,\.]\d+)?\b                         # bare ≥4-digit  e.g. 12345
     )
     """,
     _re.VERBOSE | _re.IGNORECASE,
+)
+
+# Pass 2 — short absolute prices in financial-context phrases.
+# Catches "at 95", "around 250", "target 130.5", "support 80" etc.
+# Group 1 = preposition/keyword (kept); Group 2 = number (redacted).
+_PRICE_CTX_RE = _re.compile(
+    r"\b(at|around|near|below|above|to|target|stop|support|resistance)\s+(\d{2,}(?:\.\d+)?)\b",
+    _re.IGNORECASE,
 )
 
 
 def _strip_absolute_values(text: str) -> str:
     """
     Remove tokens from prior AI output that resemble absolute monetary amounts.
-    Percentages (12.5%), small integers (P/E of 15), and ratio-like numbers
-    are preserved; only large currency-like values are redacted.
+
+    Two-pass strategy:
+      1. Currency-symbol/suffix amounts and bare numbers ≥ 4 digits.
+      2. Numbers ≥ 2 digits that follow a price-context keyword (e.g. "at 95").
+    Percentages (12.5%), P/E ratios, risk scores, and other small ratios are
+    preserved because they are not preceded by the listed keywords.
     """
-    return _ABSOLUTE_VALUE_RE.sub("[REDACTED]", text)
+    text = _ABSOLUTE_VALUE_RE.sub("[REDACTED]", text)
+    text = _PRICE_CTX_RE.sub(lambda m: f"{m.group(1)} [REDACTED]", text)
+    return text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
