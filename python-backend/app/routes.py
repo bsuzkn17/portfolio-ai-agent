@@ -98,10 +98,12 @@ async def _handle_analyze(
         )
         return
 
+    safe_ticker = services.escape_html(ticker)
+
     # 1. Acknowledge immediately
     await services.send_telegram_message(
         chat_id,
-        f"🔍 Analysing <b>{ticker}</b> — fetching market data and running AI model…",
+        f"🔍 Analysing <b>{safe_ticker}</b> — fetching market data and running AI model…",
     )
 
     # 2. Fetch market data + portfolio context concurrently.
@@ -116,8 +118,13 @@ async def _handle_analyze(
             market_data_coro, portfolio_coro, recent_coro
         )
     except ValueError as exc:
-        # User-visible error: bad ticker symbol — safe to surface
-        await services.send_telegram_message(chat_id, f"❌ {exc}")
+        # User-visible error: bad ticker symbol — safe to surface.
+        # Escaped: exception text can contain '<'/'>'/'&' (e.g. from
+        # yfinance's own error strings) which would otherwise break
+        # Telegram's HTML parser and silently drop this message too.
+        await services.send_telegram_message(
+            chat_id, f"❌ {services.escape_html(exc)}"
+        )
         return
     except Exception:
         # Internal error: log detail, send generic message to user
@@ -152,7 +159,7 @@ async def _handle_analyze(
     except Exception as exc:
         log.exception("LLM call failed for ticker=%s", ticker)
         await services.send_telegram_message(
-            chat_id, f"❌ AI analysis failed: {exc}"
+            chat_id, f"❌ AI analysis failed: {services.escape_html(exc)}"
         )
         return
 
@@ -169,9 +176,16 @@ async def _handle_analyze(
     except Exception:
         log.exception("Failed to persist analysis log ticker=%s user=%s", ticker, user_id)
 
-    # 7. Send AI response to Telegram
-    header = f"📊 <b>Investment Analysis — {ticker}</b>\n{'─' * 36}\n\n"
-    await services.send_telegram_message(chat_id, header + ai_response)
+    # 7. Send AI response to Telegram.
+    # Both the ticker and the LLM-generated analysis text are escaped: the
+    # LLM is free-form Turkish prose and naturally produces comparisons like
+    # "ROE > %20" or "Fiyat < SMA50" — any stray '<'/'>'/'&' would otherwise
+    # make Telegram reject the ENTIRE message under parse_mode="HTML",
+    # silently dropping the whole analysis with no error visible to the user.
+    header = f"📊 <b>Investment Analysis — {safe_ticker}</b>\n{'─' * 36}\n\n"
+    await services.send_telegram_message(
+        chat_id, header + services.escape_html(ai_response)
+    )
 
 
 @router.post("/webhook/telegram", status_code=status.HTTP_200_OK, tags=["Telegram"])

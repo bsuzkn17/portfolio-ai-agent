@@ -16,6 +16,7 @@ Privacy contract:
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import logging
 import math
 from typing import Any
@@ -26,6 +27,21 @@ import yfinance as yf
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
+
+
+def escape_html(value: Any) -> str:
+    """
+    Escape a value for safe embedding inside a Telegram parse_mode="HTML" message.
+
+    Anything that isn't markup we authored ourselves — LLM output, exception
+    text, ticker symbols echoed back to the user — must be escaped before
+    being interpolated next to our own literal <b>/<code> tags. Telegram's
+    HTML parser rejects the *entire* message (400: can't parse entities) on
+    any stray '<', '>' or '&', which previously caused messages to silently
+    never reach the user (e.g. Turkish analysis text naturally contains
+    comparisons like "ROE > %20" or "Fiyat < SMA50").
+    """
+    return _html.escape(str(value), quote=False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Market data — yfinance (free, no API key required)
@@ -467,9 +483,36 @@ async def send_telegram_message(
                 log.error("Telegram send timed out for chat_id=%s", chat_id)
                 raise
             except httpx.HTTPStatusError as exc:
+                body = exc.response.text
+                # Telegram rejects the WHOLE message on any stray/unescaped
+                # '<', '>' or '&' when parse_mode="HTML" (e.g. Turkish LLM
+                # output containing "ROE > %20"). Rather than dropping the
+                # message entirely (silent failure the user can't see),
+                # retry once as plain text so something still gets through.
+                if (
+                    parse_mode
+                    and exc.response.status_code == 400
+                    and "parse entities" in body.lower()
+                ):
+                    log.warning(
+                        "HTML parse failed for chat_id=%s, retrying as plain text: %s",
+                        chat_id, body[:200],
+                    )
+                    try:
+                        resp2 = await client.post(
+                            url, json={"chat_id": chat_id, "text": chunk}
+                        )
+                        resp2.raise_for_status()
+                        continue
+                    except httpx.HTTPStatusError as exc2:
+                        log.error(
+                            "Plain-text retry also failed for chat_id=%s: %s",
+                            chat_id, exc2.response.text[:200],
+                        )
+                        raise
                 log.error(
                     "Telegram API error %s for chat_id=%s: %s",
-                    exc.response.status_code, chat_id, exc.response.text[:200],
+                    exc.response.status_code, chat_id, body[:200],
                 )
                 raise
 
