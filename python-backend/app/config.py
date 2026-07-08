@@ -10,11 +10,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
-    # ── OpenRouter (free tier) ───────────────────────────────────────────────
+    # — OpenRouter (Google Gemini OpenAI Bridge) —
+    OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     OPENROUTER_MODEL: str = "gemini-2.5-flash"
-    # Free model – override via env to swap without code changes
-    OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
 
     # ── Supabase ─────────────────────────────────────────────────────────────
     SUPABASE_URL: str = ""
