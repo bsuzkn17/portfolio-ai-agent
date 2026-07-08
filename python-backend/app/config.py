@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     # Free model – override via env to swap without code changes
-    OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
+    OPENROUTER_MODEL: str = "google/gemini-2.5-flash:free"
 
     # ── Supabase ─────────────────────────────────────────────────────────────
     SUPABASE_URL: str = ""
