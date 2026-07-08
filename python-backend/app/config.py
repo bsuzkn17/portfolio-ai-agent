@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     # ── OpenRouter (free tier) ───────────────────────────────────────────────
-    OPENROUTER_API_KEY: str = ""
-    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    OPENROUTER_MODEL: str = "gemini-2.5-flash"
     # Free model – override via env to swap without code changes
     OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
 
