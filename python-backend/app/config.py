@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # — OpenRouter (Google Gemini OpenAI Bridge) —
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    OPENROUTER_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     OPENROUTER_MODEL: str = "gemini-2.5-flash"
 
     # ── Supabase ─────────────────────────────────────────────────────────────
