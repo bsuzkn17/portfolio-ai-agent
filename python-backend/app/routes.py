@@ -81,8 +81,15 @@ async def _handle_analyze(
     ticker: str,
 ) -> None:
     """
-    Full /analyze pipeline. Designed to run as a background task so Telegram
-    does not time-out the webhook before the LLM responds.
+    Full /analyze pipeline. Runs synchronously (awaited) inside the webhook
+    request handler — NOT as a fire-and-forget background task.
+
+    Platforms like Render freeze or kill the process as soon as the HTTP
+    response is sent; any asyncio.create_task() spawned before that point
+    gets cut off mid-execution and never completes (Telegram then never
+    receives the reply, even though the webhook itself returned 200 OK).
+    So every step here, including the final Telegram send and the Supabase
+    log write, must be awaited before the webhook handler returns.
     """
     if not ticker:
         await services.send_telegram_message(
@@ -149,19 +156,18 @@ async def _handle_analyze(
         )
         return
 
-    # 6. Persist to Supabase (fire-and-forget style — don't block Telegram reply)
-    async def _persist():
-        try:
-            await db.save_analysis_log(
-                user_id=user_id,
-                ticker=ticker,
-                prompt_context=prompt_context,
-                ai_response=ai_response,
-            )
-        except Exception:
-            log.exception("Failed to persist analysis log ticker=%s user=%s", ticker, user_id)
-
-    asyncio.create_task(_persist())
+    # 6. Persist to Supabase — awaited directly. A background fire-and-forget
+    #    task here would get killed by Render the instant the webhook
+    #    response is sent, so the log write must complete before we return.
+    try:
+        await db.save_analysis_log(
+            user_id=user_id,
+            ticker=ticker,
+            prompt_context=prompt_context,
+            ai_response=ai_response,
+        )
+    except Exception:
+        log.exception("Failed to persist analysis log ticker=%s user=%s", ticker, user_id)
 
     # 7. Send AI response to Telegram
     header = f"📊 <b>Investment Analysis — {ticker}</b>\n{'─' * 36}\n\n"
@@ -178,8 +184,15 @@ async def telegram_webhook(
 
     Security:
     - Optional shared-secret header validation (set TELEGRAM_WEBHOOK_SECRET).
-    - Returns HTTP 200 immediately for all valid payloads to satisfy Telegram's
-      delivery contract; the heavy work runs as a background asyncio task.
+
+    Execution model:
+    - All work is awaited synchronously before this handler returns 200 OK.
+      Platforms like Render can freeze/kill the process right after the HTTP
+      response is sent, which silently cancels any fire-and-forget
+      asyncio.create_task() work started earlier — so nothing is dispatched
+      to the background here. Telegram's own webhook timeout (a few seconds)
+      is generous enough for this pipeline; if a step is genuinely slow, use
+      the immediate "🔍 Analysing…" ack (already awaited) as user feedback.
     """
     _validate_webhook_secret(x_telegram_bot_api_secret_token)
 
@@ -209,13 +222,13 @@ async def telegram_webhook(
 
     cmd, arg = parsed
 
-    if cmd == "analyze":
-        # Dispatch as background task — webhook must return within Telegram's timeout
-        asyncio.create_task(_handle_analyze(chat_id=chat_id, user_id=user_id, ticker=arg))
+    try:
+        if cmd == "analyze":
+            # Awaited directly — must fully complete before the webhook returns.
+            await _handle_analyze(chat_id=chat_id, user_id=user_id, ticker=arg)
 
-    elif cmd == "start" or cmd == "help":
-        asyncio.create_task(
-            services.send_telegram_message(
+        elif cmd == "start" or cmd == "help":
+            await services.send_telegram_message(
                 chat_id,
                 (
                     "👋 <b>AI Investment Assistant</b>\n\n"
@@ -226,6 +239,15 @@ async def telegram_webhook(
                     "entry/target/stop zones, risk &amp; confidence scores."
                 ),
             )
+    except Exception:
+        # Never let a Telegram-side send failure (e.g. transient API error)
+        # surface as a 500 — Telegram would just retry the same update, and
+        # since the response text may have already changed, we'd risk a
+        # duplicate/partial send. Log it and still ack with 200 so Telegram
+        # marks this update as delivered.
+        log.exception(
+            "Failed to fully process command=%s chat_id=%s user_id=%s",
+            cmd, chat_id, user_id,
         )
 
     return {"ok": True}
