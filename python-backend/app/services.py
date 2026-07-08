@@ -466,3 +466,39 @@ async def send_telegram_message(
                     exc.response.status_code, chat_id, exc.response.text[:200],
                 )
                 raise
+
+
+async def register_webhook() -> None:
+    """
+    (Re-)register this service's webhook URL with Telegram on startup.
+
+    Reads TELEGRAM_WEBHOOK_URL (full public HTTPS URL, e.g.
+    https://portfolio-ai-agent-1.onrender.com/webhook/telegram) and
+    TELEGRAM_WEBHOOK_SECRET from settings. No-op if TELEGRAM_WEBHOOK_URL is
+    not configured, so this is safe to call unconditionally at startup.
+
+    This makes redeploys (Render, etc.) self-healing: every cold start
+    re-points Telegram at the current host without any manual setWebhook call.
+    """
+    settings = get_settings()
+    if not settings.TELEGRAM_WEBHOOK_URL:
+        log.info("TELEGRAM_WEBHOOK_URL not set — skipping webhook auto-registration.")
+        return
+
+    url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/setWebhook"
+    payload: dict[str, Any] = {"url": settings.TELEGRAM_WEBHOOK_URL}
+    if settings.TELEGRAM_WEBHOOK_SECRET:
+        payload["secret_token"] = settings.TELEGRAM_WEBHOOK_SECRET
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, data=payload)
+            resp.raise_for_status()
+            result = resp.json()
+        if result.get("ok"):
+            log.info("Telegram webhook registered: %s", settings.TELEGRAM_WEBHOOK_URL)
+        else:
+            log.error("Telegram webhook registration failed: %s", result)
+    except Exception:
+        # Never crash startup over this — log and continue serving traffic.
+        log.exception("Failed to register Telegram webhook at startup.")

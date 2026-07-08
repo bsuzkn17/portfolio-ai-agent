@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # Optional shared secret set when registering the webhook with Telegram
     # (X-Telegram-Bot-Api-Secret-Token header). Leave blank to skip validation.
     TELEGRAM_WEBHOOK_SECRET: str = ""
+    # Full public HTTPS URL of this service's webhook endpoint, e.g.
+    # https://portfolio-ai-agent-1.onrender.com/webhook/telegram
+    # When set, the app automatically (re-)registers this URL with Telegram
+    # on every startup — so a Render redeploy always keeps the webhook current.
+    TELEGRAM_WEBHOOK_URL: str = ""
 
     # ── Derived helpers ───────────────────────────────────────────────────────
     @property

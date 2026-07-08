@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.routes import router
+from app import services
 
 
 @asynccontextmanager
@@ -17,6 +18,9 @@ async def lifespan(app: FastAPI):
         f"model={settings.OPENROUTER_MODEL}  "
         f"debug={settings.DEBUG}"
     )
+    # Self-healing webhook: every cold start (e.g. a Render redeploy) re-points
+    # Telegram at TELEGRAM_WEBHOOK_URL, if configured. No-op otherwise.
+    await services.register_webhook()
     yield
     print("[shutdown] graceful exit")
 
